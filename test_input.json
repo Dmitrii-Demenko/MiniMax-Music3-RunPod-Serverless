@@ -1,0 +1,9 @@
+{
+  "input": {
+    "lyrics": "[Verse]\nWalking down the empty street at midnight\nStreetlights flicker like a broken dream\n[Chorus]\nAnd I keep on walking\nTill the morning finds me",
+    "prompt": "A melancholic lo-fi hip-hop track at 85 BPM in F minor: mellow Rhodes piano riff, soft vinyl crackle, dusty boom-bap drums with a laid-back swing, warm upright bass. Intimate bedroom production, gentle tape saturation, no bright cymbals.",
+    "duration": 10,
+    "seed": 1,
+    "format": "mp3"
+  }
+}

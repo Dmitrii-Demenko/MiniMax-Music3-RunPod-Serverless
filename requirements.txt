@@ -1,0 +1,6 @@
+# Worker runtime dependencies installed on top of the sglang-omni base image.
+# The engine itself (sglang-omni, torch, flashinfer) comes from the base image
+# and is pinned in the Dockerfile, not here.
+runpod==1.12.0
+httpx>=0.27,<1.0
+imageio-ffmpeg>=0.5.1

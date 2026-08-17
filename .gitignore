@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+.DS_Store
+
+# Generated audio from smoke tests and benchmarks.
+*.wav
+*.mp3
+*.flac
+*.opus
+*.ogg
+!tests/fixtures/*.wav
+
+# Cache archives produced by scripts/warm_caches.sh are hundreds of megabytes.
+docker/caches/
