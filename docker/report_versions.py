@@ -29,6 +29,10 @@ EXPECTED: dict[str, str | None] = {
     "flashinfer-python": "0.6.14",
     "flash-attn-4": None,
     "numpy": None,
+    # Absent from the base image despite sglang_omni.pipeline.control_plane needing
+    # it, so the Dockerfile installs it explicitly. Listed here to keep it visible
+    # in the build log if a future base image starts shipping a different version.
+    "msgpack": "1.1.0",
     "runpod": "1.12.0",
     "httpx": "0.28.1",
     "imageio-ffmpeg": "0.6.0",

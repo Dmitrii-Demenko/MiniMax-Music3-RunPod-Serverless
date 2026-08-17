@@ -110,7 +110,7 @@ silently producing something else: `temperature`, `top_p`, `top_k`, `repetition_
 | Setting | Value | Why |
 |---|---|---|
 | GPUs per worker | **2** | Backbone on device 0, DIT + DAV on device 1 |
-| GPU type | **L40S / RTX 6000 Ada (48 GB)**, secondary **H100 (80 GB)** | The prebuilt FlashInfer JIT cache covers SM89 and SM90a only; on A100 (SM80) or A6000/A40 (SM86) the kernels compile during a billed cold start |
+| GPU type | **L40S / RTX 6000 Ada (48 GB)**, secondary **H100 (80 GB)** | The prebuilt FlashInfer JIT cache covers SM89 and SM90a only; on A100 (SM80) or A6000/A40 (SM86) the kernels compile during a billed cold start. Picking these by pool is not enough — see the warning below |
 | CUDA version filter | **13.x** | `sglang-omni 0.1.2` ships a CUDA 13 stack |
 | Execution timeout | **1800 s** | The 600 s default cannot finish a 360 s track |
 | Idle timeout | **120–300 s** | Cold starts are expensive; keep workers warm between requests |
@@ -119,6 +119,23 @@ silently producing something else: `temperature`, `top_p`, `top_k`, `repetition_
 | Scaling | Queue delay, 4 s | Generation is long; aggressive scaling buys nothing |
 | Cached model | `MiniMaxAI/MiniMax-Music3` | Download time is not billed and cold starts drop to seconds |
 | Network volume | **none** | It would collide with the cached-model mount at `/runpod-volume` |
+
+> **The `ADA_48_PRO` pool is not Ada-only.** RunPod also files
+> `NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb` under it — a Blackwell
+> (SM120) MIG slice, outside the SM89/SM90a the baked JIT cache covers. Selecting the
+> pool therefore does not select SM89, and the REST view of the endpoint reports only
+> `pools`, so an excluded SKU is the only way to keep it out. Exclude it explicitly and
+> confirm `gpuTypeId` on a live worker rather than trusting the pool name:
+>
+> ```bash
+> # gpuIds ends up as: ADA_48_PRO,-NVIDIA RTX PRO 6000 Blackwell Server Edition MIG 2g.48gb
+> curl -s "https://rest.runpod.io/v1/endpoints/$ENDPOINT_ID/workers" \
+>   -H "Authorization: Bearer $RUNPOD_API_KEY" | jq '.[].gpuTypeId'
+> ```
+>
+> Also check `dataCenterIds` is not left empty: with every datacenter allowed, workers
+> can land where the image pull stalls indefinitely and sit `INITIALIZING` for hours,
+> consuming the max-workers budget so healthy replacements never start.
 
 4. Set environment variables (see the table below). At minimum `GPU_COUNT=2`; add the
    `BUCKET_*` trio if you want URLs instead of base64.
@@ -273,7 +290,9 @@ Design documents: [spec](docs/superpowers/specs/2026-08-17-minimax-music3-runpod
 | Symptom | Cause and fix |
 |---|---|
 | Worker exits with `no usable checkpoint` | The cached model is not attached or still downloading. Check the endpoint's cached-model setting, or set `MODEL_PATH`. |
-| First request is extremely slow | Kernels compiling. Confirm the GPU is SM89 or SM90a; raise the idle timeout and keep one active worker. |
+| Jobs sit `IN_QUEUE` forever, workers cycle `IDLE`/`UNHEALTHY`, container log is empty | The container is exiting before the handler starts, so nothing ever polls for jobs. The endpoint's worker list is the diagnostic: repeated `start container ... begin` system lines with no container output is the crash-loop signature. `engine exited with code 1` in the JSON log means `sgl-omni serve` itself died — read the forwarded `source: sgl-omni` lines for its traceback. |
+| `engine exited with code 1` right after `engine starting`, with `ModuleNotFoundError` from `sgl-omni` | A dependency `--no-deps` left behind. The base image does not carry the whole tree the Dockerfile comment assumes, and only the packages the build's import checks actually reach are verified. Add the missing pin next to `msgpack` in the Dockerfile and extend those checks to import the path that failed. |
+| First request is extremely slow | Kernels compiling. Confirm the GPU really is SM89 or SM90a — see the GPU pool warning under [Deploy from GitHub](#deploy-from-github); raise the idle timeout and keep one active worker. |
 | `engine did not become ready` | Raise `SERVER_STARTUP_TIMEOUT_S`; check worker logs for the engine's own output, which is forwarded into the JSON log with `source: sgl-omni`. |
 | `result_too_large` | Configure the `BUCKET_*` trio, or request a shorter duration or lower bitrate. |
 | `unsupported_parameter` | Sampling is fixed in this model; tempo and vocal belong in `prompt`. |

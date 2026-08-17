@@ -47,6 +47,13 @@ ARG EXTRA_PINS=""
 # 0.27.0 while re-downloading torch/torchvision metadata - and blew RunPod's
 # 30-minute build cap.
 #
+# msgpack is the one dependency that premise gets wrong: the base image does not
+# carry it, and sglang_omni.pipeline.control_plane imports it, so `sgl-omni serve`
+# died with ModuleNotFoundError on every cold start until it was installed here.
+# It is a leaf package with no dependencies of its own, so pinning it cannot
+# restart the backtracking above. The import checks below now walk the serve path
+# that reaches it, which is what should have caught this at build time.
+#
 # uv ships in the base image and resolves in seconds; pip is the fallback.
 RUN set -eux; \
     if command -v uv >/dev/null 2>&1; then \
@@ -55,6 +62,7 @@ RUN set -eux; \
         INSTALL="python3 -m pip install --no-cache-dir --break-system-packages"; \
     fi; \
     $INSTALL --no-deps "sglang-omni==${SGLANG_OMNI_VERSION}"; \
+    $INSTALL "msgpack==1.1.0"; \
     $INSTALL "runpod==1.12.0" "httpx==0.28.1" "imageio-ffmpeg==0.6.0"; \
     if [ -n "${EXTRA_PINS}" ]; then $INSTALL ${EXTRA_PINS}; fi
 
@@ -71,9 +79,18 @@ ENV FLASHINFER_WORKSPACE_BASE=/root \
     FLASHINFER_JIT_DEBUG=0 \
     TORCHINDUCTOR_CACHE_DIR=/root/.cache/torchinductor
 
-# Fail the build, not the first cold start, if the runtime cannot load this model.
+# Fail the build, not the first cold start, if the runtime cannot load this model
+# or cannot start the server.
+#
+# `command -v sgl-omni` only proves the entry point exists. Importing
+# sglang_omni.serve.launcher is what proves it can run: serve() reaches it lazily,
+# and the chain behind it (launcher -> client -> pipeline.coordinator ->
+# pipeline.control_plane) is where a dependency the base image lacks surfaces. That
+# import was missing here, so a missing msgpack passed the build and crash-looped
+# the worker on GPU instead.
 RUN python3 -c "import sglang_omni.models.minimax_music3 as m; print('model module:', m.__file__)" \
     && python3 -c "from sglang_omni.models.minimax_music3.checkpoint import resolve_checkpoint; print('checkpoint loader: ok')" \
+    && python3 -c "import sglang_omni.serve.launcher; print('serve launcher: ok')" \
     && python3 -c "from imageio_ffmpeg import get_ffmpeg_exe; print('ffmpeg:', get_ffmpeg_exe())" \
     && python3 -c "import runpod, httpx; print('runpod:', runpod.__version__)" \
     && command -v sgl-omni
