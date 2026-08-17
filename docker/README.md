@@ -48,22 +48,70 @@ Override without editing the file:
 docker build --build-arg SGLANG_OMNI_IMAGE=<image@digest> -t mm3-worker:dev .
 ```
 
+## Why the install uses `--no-deps`
+
+The first build attempt installed `sglang-omni` with its dependency tree and was killed
+at RunPod's 30-minute cap. The log shows why:
+
+```
+#11 67.31 INFO: This is taking longer than usual. You might need to provide the
+          dependency resolver with stricter constraints to reduce runtime.
+#11 492.3 Collecting torchvision==0.26.0 (from sglang-omni==0.1.2)
+#11 939.9 Collecting soundfile>=0.12.0 (from sglang-omni==0.1.2)
+#11 CANCELED
+```
+
+pip spent 28 minutes backtracking. The giveaway is `accelerate-0.27.0` — the lowest
+version the specifier allows, meaning the resolver walked the whole ladder down while
+re-downloading torch and torchvision metadata. `sglang-omni` declares ~40 dependencies
+with loose lower bounds, and the base image already had a different set installed.
+
+The base image does not need that tree resolved: it was built by upstream's own
+Dockerfile from the same `pyproject.toml`. Upstream's entrypoint installs the package
+the same way we now do:
+
+```
+python3 -m pip install --no-deps --no-build-isolation -e "${repo_dir}"
+```
+
+So the root Dockerfile installs `sglang-omni` with `--no-deps`, pins `runpod`, `httpx`
+and `imageio-ffmpeg` to exact versions, and prefers `uv` (present in the base image,
+resolves in seconds) over pip.
+
+**The trade-off:** with `--no-deps` the base image decides which torch, transformers and
+sglang the worker runs on, and the pinned runtime base is from 2026-06-16 while
+`sglang-omni 0.1.2` was released 2026-08-16. `docker/report_versions.py` runs during the
+build and prints every relevant version, flagging anything that differs from what 0.1.2
+expects (`torch==2.11.0`, `transformers==5.12.1`, `sglang==0.5.16`,
+`flashinfer-python==0.6.14`). Read that block in the build log.
+
+If versions differ and generation misbehaves, fix it without editing the Dockerfile:
+
+```bash
+docker build --build-arg EXTRA_PINS="torch==2.11.0 transformers==5.12.1" -t mm3-worker:dev .
+```
+
+On RunPod, set the same thing as a build argument in the endpoint's build settings. Use
+exact `==` pins only; loose specifiers bring the resolver problem straight back.
+
+A newer base is the other lever — `hongccc/sglang-omni@sha256:374d0b1c…` is from
+2026-08-05, eleven days closer to the release, though it lives in a personal namespace
+rather than the project's:
+
+```bash
+docker build --build-arg SGLANG_OMNI_IMAGE=hongccc/sglang-omni@sha256:374d0b1c30b2bff685b1716fc64a02ad3b3d0a90fe2ce73ce9861a6992c28101 .
+```
+
+Record here whatever turned out to be necessary.
+
 ## Build-time verification
 
 The root Dockerfile fails the build rather than the first cold start if anything is
 wrong. It checks that `sglang_omni.models.minimax_music3` imports, that the checkpoint
-loader is importable, that ffmpeg resolves, that `sgl-omni` is on `PATH`, and that every
-worker module imports with no GPU and no engine present.
-
-If the dependency install conflicts — the runtime base predates `0.1.2` — the fix is a
-pinned pre-install before the `sglang-omni` line:
-
-```dockerfile
-RUN python3 -m pip install --no-cache-dir --break-system-packages \
-        torch==2.11.0 transformers==5.12.1
-```
-
-Record here whatever turned out to be necessary.
+loader is importable, that ffmpeg resolves, that `sgl-omni` is on `PATH`, that every
+worker module imports with no GPU and no engine present, and that the root entry point
+loads. The version report warns but never fails — the import checks are what decide
+whether the runtime is usable.
 
 ## Local build
 

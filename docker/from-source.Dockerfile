@@ -65,10 +65,15 @@ FROM base AS worker
 
 ARG SGLANG_OMNI_VERSION=0.1.2
 
-RUN python3 -m pip install --no-cache-dir --break-system-packages --no-deps \
+# --no-deps because the base stage installed the dependency tree from upstream's
+# pyproject.toml already; resolving it again is what blew the build time budget.
+RUN uv pip install --system --break-system-packages --no-deps \
         "sglang-omni==${SGLANG_OMNI_VERSION}" \
-    && python3 -m pip install --no-cache-dir --break-system-packages \
-        "runpod==1.12.0" "httpx>=0.27,<1.0" "imageio-ffmpeg>=0.5.1"
+    && uv pip install --system --break-system-packages \
+        "runpod==1.12.0" "httpx==0.28.1" "imageio-ffmpeg==0.6.0"
+
+COPY docker/report_versions.py /tmp/report_versions.py
+RUN python3 /tmp/report_versions.py && rm /tmp/report_versions.py
 
 RUN python3 -c "import sglang_omni.models.minimax_music3 as m; print('model module:', m.__file__)" \
     && python3 -c "from imageio_ffmpeg import get_ffmpeg_exe; print('ffmpeg:', get_ffmpeg_exe())" \

@@ -1,6 +1,8 @@
 # Worker runtime dependencies installed on top of the sglang-omni base image.
 # The engine itself (sglang-omni, torch, flashinfer) comes from the base image
 # and is pinned in the Dockerfile, not here.
+# Pinned exactly, and matching the Dockerfile: loose specifiers made pip's resolver
+# backtrack for 28 minutes on RunPod's builder and exceed its 30-minute build cap.
 runpod==1.12.0
-httpx>=0.27,<1.0
-imageio-ffmpeg>=0.5.1
+httpx==0.28.1
+imageio-ffmpeg==0.6.0

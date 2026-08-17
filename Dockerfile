@@ -32,11 +32,38 @@ ENV SGLANG_OMNI_AUTO_CLONE=0
 # releases do not contain sglang_omni/models/minimax_music3.
 ARG SGLANG_OMNI_VERSION=0.1.2
 
-RUN python3 -m pip install --no-cache-dir --break-system-packages \
-        "sglang-omni==${SGLANG_OMNI_VERSION}" \
-        "runpod==1.12.0" \
-        "httpx>=0.27,<1.0" \
-        "imageio-ffmpeg>=0.5.1"
+# Escape hatch for a base/release version mismatch: pass exact pins here rather
+# than editing this file, e.g.
+#   --build-arg EXTRA_PINS="torch==2.11.0 transformers==5.12.1"
+# Never use loose specifiers here; they reintroduce the resolver problem below.
+ARG EXTRA_PINS=""
+
+# Install the package WITHOUT its dependency tree.
+#
+# The base image already carries that tree: it was built by upstream's Dockerfile
+# from the same pyproject.toml, and upstream's own entrypoint installs the package
+# with --no-deps for exactly this reason. Resolving dependencies here instead sent
+# pip into 28 minutes of backtracking - it walked accelerate all the way down to
+# 0.27.0 while re-downloading torch/torchvision metadata - and blew RunPod's
+# 30-minute build cap.
+#
+# uv ships in the base image and resolves in seconds; pip is the fallback.
+RUN set -eux; \
+    if command -v uv >/dev/null 2>&1; then \
+        INSTALL="uv pip install --system --break-system-packages"; \
+    else \
+        INSTALL="python3 -m pip install --no-cache-dir --break-system-packages"; \
+    fi; \
+    $INSTALL --no-deps "sglang-omni==${SGLANG_OMNI_VERSION}"; \
+    $INSTALL "runpod==1.12.0" "httpx==0.28.1" "imageio-ffmpeg==0.6.0"; \
+    if [ -n "${EXTRA_PINS}" ]; then $INSTALL ${EXTRA_PINS}; fi
+
+# Report what the base image actually provides. --no-deps means the base decides
+# these versions, so a mismatch against the pinned release must show up in the
+# build log instead of on a GPU. Warns, never fails: the import checks below are
+# what decide whether the runtime is usable.
+COPY docker/report_versions.py /tmp/report_versions.py
+RUN python3 /tmp/report_versions.py && rm /tmp/report_versions.py
 
 COPY --from=flashinfer-cache /root/.cache/flashinfer/0.6.14 /root/.cache/flashinfer/0.6.14
 
