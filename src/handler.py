@@ -194,9 +194,10 @@ def main() -> None:
     async def job_handler(job: dict) -> dict:
         return await run_job(job, runtime)
 
-    runpod.serverless.start(
-        {"handler": job_handler, "concurrency_modifier": concurrency_modifier}
-    )
+    # Kept on one line: RunPod's GitHub integration greps the repository for this
+    # call, and a multi-line form makes it report the handler as missing.
+    config = {"handler": job_handler, "concurrency_modifier": concurrency_modifier}
+    runpod.serverless.start(config)
 
 
 if __name__ == "__main__":
