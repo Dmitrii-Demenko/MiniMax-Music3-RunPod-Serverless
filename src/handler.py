@@ -186,19 +186,5 @@ def bootstrap() -> Runtime:
     return Runtime(settings=settings, client=client, engine=engine, progress=_progress)
 
 
-def main() -> None:
-    import runpod
-
-    runtime = bootstrap()
-
-    async def job_handler(job: dict) -> dict:
-        return await run_job(job, runtime)
-
-    # Kept on one line: RunPod's GitHub integration greps the repository for this
-    # call, and a multi-line form makes it report the handler as missing.
-    config = {"handler": job_handler, "concurrency_modifier": concurrency_modifier}
-    runpod.serverless.start(config)
-
-
-if __name__ == "__main__":
-    main()
+# The RunPod SDK wiring lives in rp_handler.py at the repository root, because
+# RunPod's GitHub integration looks for runpod.serverless.start() there.

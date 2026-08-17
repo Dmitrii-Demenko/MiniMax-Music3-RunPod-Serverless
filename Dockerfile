@@ -52,15 +52,17 @@ RUN python3 -c "import sglang_omni.models.minimax_music3 as m; print('model modu
     && command -v sgl-omni
 
 COPY src/ /app/src/
+COPY rp_handler.py /app/rp_handler.py
 # Shipped so the on-GPU workflows (smoke test, benchmark, cache warming) can be run
 # from inside the container on a Pod without copying files in.
 COPY scripts/ /app/scripts/
 
 # Verify our own modules import cleanly with no engine and no GPU present.
-RUN PYTHONPATH=/app/src python3 -c "import config, logging_setup, lyrics, request_schema, model_path, audio, delivery, server, handler; print('worker modules: ok')"
+RUN PYTHONPATH=/app/src python3 -c "import config, logging_setup, lyrics, request_schema, model_path, audio, delivery, server, handler; print('worker modules: ok')" \
+    && python3 -c "import importlib.util; spec = importlib.util.spec_from_file_location('rp_handler', '/app/rp_handler.py'); module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); print('entry point: ok')"
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src \
     HF_HOME=/runpod-volume/huggingface-cache
 
-ENTRYPOINT ["python3", "-u", "/app/src/handler.py"]
+ENTRYPOINT ["python3", "-u", "/app/rp_handler.py"]

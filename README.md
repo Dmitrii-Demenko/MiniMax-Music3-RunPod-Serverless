@@ -254,7 +254,8 @@ a real engine lives in `scripts/` and is run on a Pod.
 
 | File | Responsibility |
 |---|---|
-| `src/handler.py` | RunPod entry point; job flow and error mapping |
+| `rp_handler.py` | RunPod SDK wiring. Lives at the root because RunPod's GitHub integration scans for the serverless start call there and does not reliably find one under `src/` |
+| `src/handler.py` | Job flow and error mapping |
 | `src/server.py` | sgl-omni child process: launch, readiness, shutdown |
 | `src/request_schema.py` | Input validation; rejects unsupported parameters |
 | `src/lyrics.py` | Puts structure tags on their own lines |

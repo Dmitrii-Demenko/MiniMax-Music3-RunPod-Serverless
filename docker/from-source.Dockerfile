@@ -75,6 +75,8 @@ RUN python3 -c "import sglang_omni.models.minimax_music3 as m; print('model modu
     && command -v sgl-omni
 
 COPY src/ /app/src/
+COPY rp_handler.py /app/rp_handler.py
+COPY scripts/ /app/scripts/
 
 RUN PYTHONPATH=/app/src python3 -c "import handler; print('worker modules: ok')"
 
@@ -82,4 +84,4 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src \
     HF_HOME=/runpod-volume/huggingface-cache
 
-ENTRYPOINT ["python3", "-u", "/app/src/handler.py"]
+ENTRYPOINT ["python3", "-u", "/app/rp_handler.py"]
